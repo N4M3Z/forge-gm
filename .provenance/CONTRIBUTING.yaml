@@ -1,0 +1,23 @@
+provenance:
+    _type: https://in-toto.io/Statement/v1
+    subject:
+        - name: CONTRIBUTING.md
+          digest:
+              sha256: 2c00b70d07b45b802156916940d5ffea05d01cb79ae3281d690f3d5591d6a6f0
+    predicateType: https://slsa.dev/provenance/v1
+    predicate:
+        buildDefinition:
+            buildType: https://github.com/N4M3Z/forge-cli/init/v1
+            externalParameters:
+                source: https://github.com/N4M3Z/forge-cli
+            resolvedDependencies:
+                - uri: templates/init/CONTRIBUTING.md
+                  digest:
+                      sha256: 25798482579be6a49326b9771701c81b304dd7bf021e129d27c0441e90ad811b
+        runDetails:
+            builder:
+                id: forge-cli
+                version:
+                    forge: 0.3.1
+            metadata:
+                startedOn: "2026-04-17T17:07:46.735419+00:00"

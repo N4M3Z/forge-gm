@@ -1,0 +1,7 @@
+{
+    "name": "forge-gm",
+    "version": "0.1.0",
+    "description": "RPG session prep toolkit — scene writing, review, art/music scouting, lore integrity, and GM adaptation agents.",
+    "author": {"name": "Martin Zeman"},
+    "skills": ["./skills"]
+}
