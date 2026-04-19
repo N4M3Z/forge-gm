@@ -51,6 +51,8 @@ Read `.art-catalog.json` from the art library directory. Search entries by:
 
 Use `jq` to filter `.art-catalog.json`. Present local matches first — these are already downloaded and ready to use.
 
+**Catalog density check**: Before finalizing picks, report the described/undescribed ratio of the catalog and of the thematic subset you're searching. If fewer than 3 strong described matches surface AND ≥50 entries in thematically relevant sets are undescribed, surface this to the user and offer an ArtDescribe batch before committing to final picks.
+
 ### Step 3: Search Scryfall (if needed)
 
 If the local catalog has fewer than 3 strong matches, search Scryfall for new art. Construct 2-4 queries using art tags, color identity, card type, flavor text, and artist.
@@ -65,6 +67,8 @@ Execute searches via WebFetch. Parse: `name`, `set_name`, `artist`, `image_uris.
 **Rate limiting**: Wait 100ms between API requests.
 
 ### Step 4: Present Candidates
+
+**Disk verification (hard gate)**: Every local candidate MUST be verified to exist on disk via `find <library>/ -type f -name '<filename>'` before being presented. A file named in the catalog is not evidence that the file exists — artists get renamed, subdirectory paths drift, files go missing. Never claim 'verified on disk' unless you actually ran a disk check in the current session.
 
 Present 3-5 candidates per scene as a table with card name, set, artist, source (Local/Scryfall), and why it fits. Mark local results with `[Local]` — these require no download. **Wait for approval before using or downloading.**
 
