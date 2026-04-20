@@ -40,3 +40,5 @@ Generate, adapt, or rewrite RPG scenes using the GameMaster agent's diagnostic w
 - Always output complete scenes — no "fill in later" placeholders
 - Surface lore contradictions before generating
 - REWRITE mode is pure formatting — no questions, no diagnostics
+- **Confirm every NPC, location, and invented term against the compendium before propagating.** Grep `Compendium/Characters/`, `Compendium/Locations/`, etc. for the name and likely near-variants. If a name does not exist, ask the user before inventing a spelling — never substitute a near-homophone from training-set fantasy lexicon. Once a wrong variant lands in a scene file, it propagates through every subsequent agent dispatch.
+- Before dispatching parallel sub-agents (e.g., generating multiple scenes at once), sanitize the shared context — chapter overviews and earlier conversation may contain provisional names that have since been corrected. Contamination propagates silently across agents.

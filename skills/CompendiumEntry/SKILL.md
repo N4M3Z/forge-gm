@@ -1,66 +1,44 @@
 ---
 name: CompendiumEntry
-description: Create or enrich a compendium entry — proper frontmatter, lore classification, external references, folder placement. USE WHEN create compendium entry, new NPC, new location, enrich entry, add to compendium.
-version: 0.1.0
+description: Create or enrich a compendium entry from vault templates — proper frontmatter, central-tenet pattern, lore classification, folder placement. USE WHEN create compendium entry, new NPC, new location, new item, new power, enrich entry, add to compendium.
+version: 0.2.0
 ---
 
-# CompendiumEntry
-
-Create or enrich compendium entries with proper structure, lore classification, and cross-references.
+Create or enrich compendium entries using the vault's standard templates. Templates live in the vault's `Templates/` directory and define the structure for each entry type.
 
 ## Instructions
 
-1. Determine the entity: name, type (character, location, organization, item, creature, event, concept), and lore origin (canon, homebrew, adapted).
+1. **Determine the entity type and folder placement.** Use the table:
 
-2. Determine folder placement using the CompendiumHygiene rule. If the entity type doesn't clearly map to a folder, ask the user.
+    | Entity                                  | Template                 | Folder                          |
+    | --------------------------------------- | ------------------------ | ------------------------------- |
+    | Mortal NPC, named character             | `Templates/Character.md` | `Compendium/Characters/`        |
+    | Deity, archfiend, celestial, cosmic     | `Templates/Power.md`     | `Compendium/Powers/`            |
+    | Magic item, artifact, notable object    | `Templates/Item.md`      | `Compendium/Items/`             |
+    | City, plane, landmark, gate-town        | `Templates/Location.md`  | `Compendium/Locations/`         |
+    | Faction, guild, troupe, government      | `Templates/Character.md` (adapted) | `Compendium/Organizations/` |
+    | Creature, monster type, encounter foe   | `Templates/Character.md` (adapted) | `Compendium/Bestiary/`      |
 
-3. Check for existing entries — search for the name and common aliases in the Compendium directory. If found, switch to enrichment mode (add content to the existing entry). If a near-duplicate exists (similar name, same entity), flag it.
+    If the entity does not clearly map, ask the user.
 
-4. Build the frontmatter:
+2. **Confirm name spelling against the existing compendium first.** Grep `Compendium/<folder>/` for the name and likely near-variants. If a name does not exist in the compendium, ask the user before inventing a spelling — never substitute a near-homophone from training-set fantasy lexicon. If the name already exists, switch to enrichment mode. If a near-duplicate exists (similar name, same entity), flag it before creating a new file. Once a wrong variant lands in a vault file, it propagates through every subsequent agent dispatch.
 
-```yaml
----
-aliases: []
-type: character
-status: canon
-tags:
-    - "#lore/homebrew"
-language: en
-first_appearance: "[[Scene X.Y]]"
-campaigns:
-    - "[[Campaign Name]]"
----
-```
+3. **Apply the naming convention.** Filename and `title:` are English. If the user supplied a Czech or other-language name, translate to a poetic English equivalent and preserve the original under `aliases:`. Example: `Pyritová zahrada` → file `The Gilded Garden.md`, alias `Pyritová zahrada`.
 
-5. Write the body:
+4. **Read the template** for the entity type. Substitute every `${VARIABLE}` placeholder with the appropriate content. Strip the trailing `%% comment %%` annotations after substitution. Preserve the structural shape (frontmatter, central-tenet bold sentence, appearance paragraph, history paragraph, sectioned body).
 
-```markdown
-# Entity Name
+5. **Write the central tenet** as a single bold sentence following the pattern: *"X wants Y, by Z — and is having difficulty getting it because [obstacles]."* This is the most important line — it captures motivation, method, and friction together.
 
-Brief description (1-2 sentences).
+6. **Set lore classification correctly.** Use `lore/canon` for unmodified D&D content, `lore/homebrew` for original campaign content, `lore/adapted` for canon with campaign-specific changes. Adapted entries must explain what differs from canon in the body.
 
-## Details
+7. **Cross-reference scenes that already mention the entity.** Grep the campaign folders for the wikilink and add an `## Appearances` section if the entity is referenced in scenes that predate the entry.
 
-Expanded lore, backstory, abilities, relationships.
-
-## Appearances
-
-- [[Scene X.Y]] — context of appearance
-
-## References
-
-- [D&D Beyond: Name](url) — for canon entries
-```
-
-6. For canon entries, search D&D Beyond and Forgotten Realms Wiki for authoritative references. Add links to the References section. For homebrew entries, skip external references.
-
-7. After creating the entry, check which scenes reference this entity via wikilink. If scenes reference it but the entry didn't exist before, list those scenes in the Appearances section.
+8. **For canon entries**, add a `## References` section with links to D&D Beyond or Forgotten Realms Wiki at the bottom. Skip for homebrew.
 
 ## Constraints
 
-- Every entry needs frontmatter with `type`, `status`, and lore classification tag
-- Canon entries get external reference links, homebrew entries do not
-- Adapted entries must note what differs from canon
-- Czech entries stay in Czech with `language: cs`
-- Aliases in frontmatter for alternate names and spellings
-- Never create an entry without knowing its lore classification — ask if unsure
+- Filename and `title:` always English. Czech, French, or other-language names go in `aliases:`.
+- Frontmatter must include: `title`, `aliases`, `tags` (with `type/<kind>` + lore tag), `keywords`, `description`, `status`, `created`, `updated`.
+- Every entry needs a central-tenet sentence — do not skip it even for minor entries.
+- Never invent a near-variant of an existing name. Confirm spelling first.
+- Compendium folder routing is non-negotiable — Powers/ is for cosmic entities, Characters/ is for mortals (including PCs whose god-identity is a pacing-firewalled secret).
