@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# catalog-builder — Build/update .art-catalog.json from Scryfall API
+#
+# Queries Scryfall for each image in an art directory, storing:
+#   card_name, set_name, set_code, artist, colors, type_line, keywords, flavor_text
+#
+# Usage:
+#   catalog-builder <art-dir>              # catalog un-indexed images only (incremental)
+#   catalog-builder <art-dir> --full       # re-catalog everything
+#   catalog-builder <art-dir> --dry-run    # show what would be queried without writing
+#
+# Respects Scryfall rate limit: 100ms between requests.
+# Progress is saved after each card — safe to interrupt and resume.
+
+set -euo pipefail
+
+ART_DIR=""
+FULL=false
+DRY_RUN=false
+INDEXED=0
+SKIPPED=0
+FAILED=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --full) FULL=true ;;
+        --dry-run) DRY_RUN=true ;;
+        -h|--help)
+            echo "Usage: catalog-builder <art-dir> [--full] [--dry-run]"
+            exit 0
+            ;;
+        *)
+            if [ -z "$ART_DIR" ]; then
+                ART_DIR="$arg"
+            fi
+            ;;
+    esac
+done
+
+if [ -z "$ART_DIR" ]; then
+    echo "Error: art directory required"
+    echo "Usage: catalog-builder <art-dir> [--full] [--dry-run]"
+    exit 1
+fi
+
+if [ ! -d "$ART_DIR" ]; then
+    echo "Error: $ART_DIR is not a directory"
+    exit 1
+fi
+
+CATALOG="$ART_DIR/.art-catalog.json"
+
+# Initialize catalog if missing
+if [ ! -f "$CATALOG" ]; then
+    echo '{}' > "$CATALOG"
+fi
+
+# Parse card name and set from filename
+# Format: "Card Name (Set Name) - art by Artist.jpg" or "Card Name (Set Name).jpg"
+parse_filename() {
+    local basename="$1"
+    # Remove .jpg extension
+    basename="${basename%.jpg}"
+    # Extract card name (everything before first '(')
+    CARD_NAME="$(echo "$basename" | sed 's/ *(.*//')"
+    # Extract set name (between parentheses)
+    SET_NAME="$(echo "$basename" | grep -o '([^)]*)' | head -1 | tr -d '()')" || true
+    # Extract artist (after "art by") — used as Scryfall-failure fallback
+    ARTIST="$(echo "$basename" | grep -o 'art by .*' | sed 's/art by //' || true)"
+}
+
+# Map set names to Scryfall set codes (common ones)
+set_code_for() {
+    local set_name="$1"
+    case "$set_name" in
+        "Limited (Alpha)") echo "lea" ;;
+        "7th Edition") echo "7ed" ;;
+        "10th Edition") echo "10e" ;;
+        "Modern Horizons") echo "mh1" ;;
+        "Theros Beyond Death") echo "thb" ;;
+        "Throne of Eldraine") echo "eld" ;;
+        "Zendikar Rising") echo "znr" ;;
+        "Kaldheim") echo "khm" ;;
+        "Return to Ravnica") echo "rtr" ;;
+        "Gatecrash") echo "gtc" ;;
+        "Dominaria United") echo "dmu" ;;
+        "March of the Machine") echo "mom" ;;
+        "Kaladesh") echo "kld" ;;
+        "Kaladesh Inventions") echo "mps" ;;
+        "Foundations Jumpstart") echo "fdn" ;;
+        "Urza's Saga") echo "usg" ;;
+        "Planar Chaos") echo "plc" ;;
+        "Innistrad") echo "isd" ;;
+        "Rise of the Eldrazi") echo "roe" ;;
+        "Mirrodin") echo "mrd" ;;
+        "Fifth Dawn") echo "5dn" ;;
+        "Shards of Alara") echo "ala" ;;
+        "Scars of Mirrodin") echo "som" ;;
+        "Worldwake") echo "wwk" ;;
+        *) echo "" ;;  # Unknown — search by name only
+    esac
+}
+
+# Find all .jpg files (both root and subdirectories)
+while read -r filepath; do
+    filename="$(basename "$filepath")"
+
+    # Skip if already in catalog (unless --full)
+    if ! $FULL; then
+        if jq -e --arg key "$filename" '.[$key]' "$CATALOG" > /dev/null 2>&1; then
+            SKIPPED=$((SKIPPED + 1))
+            continue
+        fi
+    fi
+
+    parse_filename "$filename"
+
+    if [ -z "$CARD_NAME" ] || [ -z "$SET_NAME" ]; then
+        echo "SKIP (parse fail): $filename"
+        FAILED=$((FAILED + 1))
+        continue
+    fi
+
+    if $DRY_RUN; then
+        echo "Would query: $CARD_NAME ($SET_NAME) — art by ${ARTIST:-unknown}"
+        continue
+    fi
+
+    # Query Scryfall
+    set_code="$(set_code_for "$SET_NAME")"
+    if [ -n "$set_code" ]; then
+        encoded="$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$CARD_NAME")"
+        url="https://api.scryfall.com/cards/named?fuzzy=${encoded}&set=$set_code"
+    else
+        encoded="$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$CARD_NAME")"
+        url="https://api.scryfall.com/cards/named?fuzzy=${encoded}"
+    fi
+
+    response="$(curl -sL "$url" 2>/dev/null)" || true
+
+    # Check for error — write partial entry from filename so the catalog still tracks the file
+    if echo "$response" | jq -e '.object == "error"' > /dev/null 2>&1; then
+        echo "FAIL: $filename (not found on Scryfall, keeping filename metadata)"
+        partial="$(jq -n \
+            --arg card_name "$CARD_NAME" \
+            --arg set_name "$SET_NAME" \
+            --arg artist "$ARTIST" \
+            '{card_name: $card_name, set_name: $set_name, artist: $artist, scryfall_resolved: false}')"
+        jq --arg key "$filename" --argjson val "$partial" '.[$key] = $val' "$CATALOG" > "${CATALOG}.tmp" && mv "${CATALOG}.tmp" "$CATALOG"
+        FAILED=$((FAILED + 1))
+        sleep 0.1
+        continue
+    fi
+
+    # Extract metadata
+    entry="$(echo "$response" | jq -c '{
+        card_name: .name,
+        set_name: .set_name,
+        set_code: .set,
+        artist: .artist,
+        colors: (.colors // []),
+        color_identity: (.color_identity // []),
+        type_line: .type_line,
+        cmc: .cmc,
+        keywords: (.keywords // []),
+        flavor_text: (.flavor_text // ""),
+        oracle_text: (.oracle_text // ""),
+        art_crop: (.image_uris.art_crop // ""),
+        scryfall_uri: .scryfall_uri,
+        description: ""
+    }')"
+
+    # Merge into catalog
+    jq --arg key "$filename" --argjson val "$entry" '.[$key] = $val' "$CATALOG" > "${CATALOG}.tmp" && mv "${CATALOG}.tmp" "$CATALOG"
+
+    echo "OK: $filename"
+    INDEXED=$((INDEXED + 1))
+
+    # Rate limit
+    sleep 0.1
+done < <(find "$ART_DIR" -name "*.jpg" -not -path "*/.DS_Store" | sort)
+
+echo ""
+echo "Done. Indexed: $INDEXED, Skipped: $SKIPPED, Failed: $FAILED"

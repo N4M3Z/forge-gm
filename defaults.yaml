@@ -1,0 +1,5 @@
+# forge-gm default configuration.
+# Override: create config.yaml (gitignored) with only the fields you want to change.
+#
+# Agent model tiers and descriptions live in each agent's frontmatter.
+# This file exists for future module-level config (hooks, ADR paths, etc.).

@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# catalog-lint — Diagnose data quality issues in an MTG art catalog
+#
+# Checks:
+#   1. Filename parse failures (missing card name or set name)
+#   2. Duplicate basenames across subdirectories
+#   3. Orphans: files not in catalog, catalog entries without files
+#   4. Non-standard naming (underscores, missing parenthesized set)
+#   5. Empty descriptions count
+#
+# Usage:
+#   catalog-lint <art-dir>
+#
+# Output: reviewable report, no auto-fixes.
+# Exit code: 0 = clean, 1 = issues found
+
+set -euo pipefail
+
+ART_DIR="${1:-}"
+
+if [ -z "$ART_DIR" ]; then
+    echo "Usage: catalog-lint <art-dir>"
+    exit 1
+fi
+
+if [ ! -d "$ART_DIR" ]; then
+    echo "Error: $ART_DIR is not a directory"
+    exit 1
+fi
+
+CATALOG="$ART_DIR/.art-catalog.json"
+if [ ! -f "$CATALOG" ]; then
+    echo "Error: no .art-catalog.json in $ART_DIR"
+    exit 1
+fi
+
+ISSUES=0
+TMPDIR_LINT="${TMPDIR:-/private/tmp/claude-501}/catalog-lint-$$"
+mkdir -p "$TMPDIR_LINT"
+trap 'rm -rf "$TMPDIR_LINT"' EXIT
+
+echo "=== CATALOG LINT: $ART_DIR ==="
+echo ""
+
+# --- 1. Filename parse failures ---
+echo "--- PARSE FAILURES ---"
+PARSE_FAIL=0
+while read -r filepath; do
+    filename="$(basename "$filepath")"
+    # Check for parenthesized set name
+    if ! echo "$filename" | grep -q '([^)]\+)'; then
+        echo "  NO SET:  $filename"
+        PARSE_FAIL=$((PARSE_FAIL + 1))
+    fi
+done < <(find "$ART_DIR" -name "*.jpg" -not -path "*/.DS_Store" -not -path "*/Non-MTG/*" | sort)
+
+if [ "$PARSE_FAIL" -eq 0 ]; then
+    echo "  (none)"
+else
+    ISSUES=$((ISSUES + PARSE_FAIL))
+fi
+echo ""
+
+# --- 2. Non-standard naming ---
+echo "--- NON-STANDARD NAMING ---"
+NONSTANDARD=0
+while read -r filepath; do
+    filename="$(basename "$filepath")"
+    # Underscores in filename (non-MTG naming convention)
+    if echo "$filename" | grep -q '_'; then
+        echo "  UNDERSCORE:  $filename"
+        NONSTANDARD=$((NONSTANDARD + 1))
+    fi
+done < <(find "$ART_DIR" -name "*.jpg" -not -path "*/.DS_Store" -not -path "*/Non-MTG/*" | sort)
+
+if [ "$NONSTANDARD" -eq 0 ]; then
+    echo "  (none)"
+else
+    ISSUES=$((ISSUES + NONSTANDARD))
+fi
+echo ""
+
+# --- 3. Duplicate basenames ---
+echo "--- DUPLICATE BASENAMES ---"
+DUP_COUNT=0
+find "$ART_DIR" -name "*.jpg" -not -path "*/.DS_Store" -not -path "*/Non-MTG/*" -exec basename {} \; | sort > "$TMPDIR_LINT/all-basenames.txt"
+sort "$TMPDIR_LINT/all-basenames.txt" | uniq -d > "$TMPDIR_LINT/dupes.txt" || true
+
+while read -r dupe; do
+    if [ -n "$dupe" ]; then
+        echo "  DUPE: $dupe"
+        # Show all locations
+        while read -r loc; do
+            rel="${loc#"$ART_DIR"/}"
+            echo "    -> $rel"
+        done < <(find "$ART_DIR" -name "$dupe" -not -path "*/.DS_Store" | sort)
+        DUP_COUNT=$((DUP_COUNT + 1))
+    fi
+done < "$TMPDIR_LINT/dupes.txt"
+
+if [ "$DUP_COUNT" -eq 0 ]; then
+    echo "  (none)"
+else
+    ISSUES=$((ISSUES + DUP_COUNT))
+fi
+echo ""
+
+# --- 4. Orphans: files not in catalog ---
+echo "--- FILES NOT IN CATALOG ---"
+MISSING_FROM_CAT=0
+jq -r 'keys[]' "$CATALOG" | sort > "$TMPDIR_LINT/catalog-keys.txt"
+sort -u "$TMPDIR_LINT/all-basenames.txt" > "$TMPDIR_LINT/unique-basenames.txt"
+
+comm -23 "$TMPDIR_LINT/unique-basenames.txt" "$TMPDIR_LINT/catalog-keys.txt" > "$TMPDIR_LINT/not-in-catalog.txt" || true
+
+while read -r missing; do
+    if [ -n "$missing" ]; then
+        echo "  NOT INDEXED: $missing"
+        MISSING_FROM_CAT=$((MISSING_FROM_CAT + 1))
+    fi
+done < "$TMPDIR_LINT/not-in-catalog.txt"
+
+if [ "$MISSING_FROM_CAT" -eq 0 ]; then
+    echo "  (none)"
+else
+    ISSUES=$((ISSUES + MISSING_FROM_CAT))
+fi
+echo ""
+
+# --- 5. Orphans: catalog entries without files ---
+echo "--- CATALOG ENTRIES WITHOUT FILES ---"
+ORPHAN_ENTRIES=0
+comm -23 "$TMPDIR_LINT/catalog-keys.txt" "$TMPDIR_LINT/unique-basenames.txt" > "$TMPDIR_LINT/orphan-entries.txt" || true
+
+while read -r orphan; do
+    if [ -n "$orphan" ]; then
+        echo "  ORPHAN: $orphan"
+        ORPHAN_ENTRIES=$((ORPHAN_ENTRIES + 1))
+    fi
+done < "$TMPDIR_LINT/orphan-entries.txt"
+
+if [ "$ORPHAN_ENTRIES" -eq 0 ]; then
+    echo "  (none)"
+else
+    ISSUES=$((ISSUES + ORPHAN_ENTRIES))
+fi
+echo ""
+
+# --- 6. Empty descriptions ---
+EMPTY_DESC="$(jq '[to_entries[] | select(.value.description == "")] | length' "$CATALOG")"
+TOTAL_ENTRIES="$(jq 'length' "$CATALOG")"
+echo "--- DESCRIPTIONS ---"
+echo "  Empty: $EMPTY_DESC / $TOTAL_ENTRIES"
+echo ""
+
+# --- Summary ---
+TOTAL_FILES="$(wc -l < "$TMPDIR_LINT/all-basenames.txt" | tr -d ' ')"
+UNIQUE_FILES="$(wc -l < "$TMPDIR_LINT/unique-basenames.txt" | tr -d ' ')"
+echo "=== SUMMARY ==="
+echo "  Files:       $TOTAL_FILES total, $UNIQUE_FILES unique"
+echo "  Catalog:     $TOTAL_ENTRIES entries"
+echo "  Parse fails: $PARSE_FAIL"
+echo "  Non-standard: $NONSTANDARD"
+echo "  Duplicates:  $DUP_COUNT"
+echo "  Not indexed: $MISSING_FROM_CAT"
+echo "  Orphan entries: $ORPHAN_ENTRIES"
+echo "  Empty descriptions: $EMPTY_DESC / $TOTAL_ENTRIES"
+echo ""
+
+if [ "$ISSUES" -gt 0 ]; then
+    echo "RESULT: $ISSUES issues found"
+    exit 1
+else
+    echo "RESULT: clean"
+    exit 0
+fi

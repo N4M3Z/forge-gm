@@ -1,0 +1,23 @@
+provenance:
+    _type: https://in-toto.io/Statement/v1
+    subject:
+        - name: INSTALL.md
+          digest:
+              sha256: 265611c6aa79f36dc2ddba6afb67318f36a34816402599d9f1088d2be4b823e6
+    predicateType: https://slsa.dev/provenance/v1
+    predicate:
+        buildDefinition:
+            buildType: https://github.com/N4M3Z/forge-cli/init/v1
+            externalParameters:
+                source: https://github.com/N4M3Z/forge-cli
+            resolvedDependencies:
+                - uri: templates/init/INSTALL.md
+                  digest:
+                      sha256: 265611c6aa79f36dc2ddba6afb67318f36a34816402599d9f1088d2be4b823e6
+        runDetails:
+            builder:
+                id: forge-cli
+                version:
+                    forge: 0.3.1
+            metadata:
+                startedOn: "2026-04-17T17:07:46.735559+00:00"

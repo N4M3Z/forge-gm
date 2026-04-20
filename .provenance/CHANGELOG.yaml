@@ -1,0 +1,23 @@
+provenance:
+    _type: https://in-toto.io/Statement/v1
+    subject:
+        - name: CHANGELOG.md
+          digest:
+              sha256: 84c6eba5d0425ffa4110e1adff84d9f468387713e8981f2a0bd06ee4db505bc8
+    predicateType: https://slsa.dev/provenance/v1
+    predicate:
+        buildDefinition:
+            buildType: https://github.com/N4M3Z/forge-cli/init/v1
+            externalParameters:
+                source: https://github.com/N4M3Z/forge-cli
+            resolvedDependencies:
+                - uri: templates/init/CHANGELOG.md
+                  digest:
+                      sha256: 84c6eba5d0425ffa4110e1adff84d9f468387713e8981f2a0bd06ee4db505bc8
+        runDetails:
+            builder:
+                id: forge-cli
+                version:
+                    forge: 0.3.1
+            metadata:
+                startedOn: "2026-04-17T17:07:46.734951+00:00"
